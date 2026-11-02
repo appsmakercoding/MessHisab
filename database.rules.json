@@ -1,0 +1,61 @@
+{
+ "rules": {
+  ".read": false,
+  ".write": false,
+  "licenses": {
+   "$m": {
+    ".read": "auth!=null && root.child('users/'+auth.uid+'/messId').val()==$m",
+    ".write": "auth!=null && $m==auth.uid && !data.exists() && newData.child('active').val()==false && newData.child('maxBoarders').val()==100"
+   }
+  },
+  "users": {
+   "$u": {
+    ".read": "auth!=null && auth.uid==$u",
+    ".write": "auth!=null && ((auth.uid==$u && !data.exists() && newData.child('role').val()=='monitor' && newData.child('messId').val()==auth.uid) || (newData.exists() && root.child('users/'+auth.uid+'/role').val()=='monitor' && root.child('users/'+auth.uid+'/messId').val()==newData.child('messId').val() && (newData.child('role').val()!='monitor' || $u==auth.uid) && root.child('licenses/'+newData.child('messId').val()+'/active').val()==true) || (!newData.exists() && $u!=auth.uid && root.child('users/'+auth.uid+'/role').val()=='monitor' && root.child('users/'+auth.uid+'/messId').val()==data.child('messId').val()))"
+   }
+  },
+  "messes": {
+   "$m": {
+    ".read": "auth!=null && root.child('users/'+auth.uid+'/messId').val()==$m && root.child('users/'+auth.uid+'/active').val()==true && root.child('licenses/'+$m+'/active').val()==true",
+    "members": {
+     "$u": {
+      ".write": "(auth!=null && root.child('users/'+auth.uid+'/messId').val()==$m && root.child('users/'+auth.uid+'/active').val()==true && root.child('licenses/'+$m+'/active').val()==true && root.child('users/'+auth.uid+'/role').val()=='monitor' && (data.exists() || root.child('messes/'+$m+'/members').numChildren() < root.child('licenses/'+$m+'/maxBoarders').val())) || (auth.uid==$m && $u==auth.uid && !data.exists())"
+     }
+    },
+    "meals": {
+     "$d": {
+      ".write": "auth!=null && root.child('users/'+auth.uid+'/messId').val()==$m && root.child('users/'+auth.uid+'/active').val()==true && root.child('licenses/'+$m+'/active').val()==true && (root.child('users/'+auth.uid+'/role').val()=='monitor' || root.child('users/'+auth.uid+'/role').val()=='meal') && !root.child('messes/'+$m+'/locked/'+$d.substring(0,7)).exists()"
+     }
+    },
+    "entries": {
+     ".indexOn": [
+      "date"
+     ],
+     "$e": {
+      ".write": "auth!=null && root.child('users/'+auth.uid+'/messId').val()==$m && root.child('users/'+auth.uid+'/active').val()==true && root.child('licenses/'+$m+'/active').val()==true && root.child('users/'+auth.uid+'/role').val()!='boarder' && (!newData.exists() || (((root.child('users/'+auth.uid+'/role').val()=='monitor') || (root.child('users/'+auth.uid+'/role').val()=='meal' && newData.child('type').val().matches(/^(deposit|rice|market)$/)) || (root.child('users/'+auth.uid+'/role').val()=='bills' && newData.child('type').val().matches(/^(bill_in|bill)$/)) || (root.child('users/'+auth.uid+'/role').val()=='fuel' && newData.child('type').val().matches(/^(fuel_in|fuel)$/)) || (root.child('users/'+auth.uid+'/role').val()=='dev' && newData.child('type').val().matches(/^(dev_in|dev)$/))) && !root.child('messes/'+$m+'/locked/'+newData.child('date').val().substring(0,7)).exists())) && (!data.exists() || (((root.child('users/'+auth.uid+'/role').val()=='monitor') || (root.child('users/'+auth.uid+'/role').val()=='meal' && data.child('type').val().matches(/^(deposit|rice|market)$/)) || (root.child('users/'+auth.uid+'/role').val()=='bills' && data.child('type').val().matches(/^(bill_in|bill)$/)) || (root.child('users/'+auth.uid+'/role').val()=='fuel' && data.child('type').val().matches(/^(fuel_in|fuel)$/)) || (root.child('users/'+auth.uid+'/role').val()=='dev' && data.child('type').val().matches(/^(dev_in|dev)$/))) && !root.child('messes/'+$m+'/locked/'+data.child('date').val().substring(0,7)).exists()))"
+     }
+    },
+    "audit": {
+     "$a": {
+      ".write": "auth!=null && root.child('users/'+auth.uid+'/messId').val()==$m && root.child('users/'+auth.uid+'/active').val()==true && root.child('licenses/'+$m+'/active').val()==true && root.child('users/'+auth.uid+'/role').val()!='boarder' && !data.exists() && newData.exists()"
+     }
+    },
+    "notice": {
+     ".write": "auth!=null && root.child('users/'+auth.uid+'/messId').val()==$m && root.child('users/'+auth.uid+'/active').val()==true && root.child('licenses/'+$m+'/active').val()==true && root.child('users/'+auth.uid+'/role').val()=='monitor'"
+    },
+    "locked": {
+     "$ym": {
+      ".write": "auth!=null && root.child('users/'+auth.uid+'/messId').val()==$m && root.child('users/'+auth.uid+'/active').val()==true && root.child('licenses/'+$m+'/active').val()==true && root.child('users/'+auth.uid+'/role').val()=='monitor'"
+     }
+    },
+    "off": {
+     "$d": {
+      "$u": {
+       ".write": "auth!=null && root.child('users/'+auth.uid+'/messId').val()==$m && root.child('users/'+auth.uid+'/active').val()==true && root.child('licenses/'+$m+'/active').val()==true && auth.uid==$u"
+      }
+     }
+    }
+   }
+  }
+ }
+}
