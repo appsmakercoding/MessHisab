@@ -197,7 +197,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     const titles = ['মেস হিসাব', 'মিল', 'এন্ট্রি / হিসাব', 'রিপোর্ট', 'সেটিংস'];
     return Scaffold(
       appBar: AppBar(title: Text(titles[i]), toolbarHeight: 48),
-      body: SafeArea(child: Column(children: [const OfflineBanner(), Expanded(child: pages[i])])),
+      body: SafeArea(child: Column(children: [const OfflineBanner(), Expanded(child: AnimatedSwitcher(duration: const Duration(milliseconds: 250), child: KeyedSubtree(key: ValueKey(i), child: pages[i])))])),
       bottomNavigationBar: NavigationBar(selectedIndex: i, onDestinationSelected: (v) => setState(() => i = v), destinations: [
         const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'হোম'),
         NavigationDestination(icon: const Icon(Icons.restaurant_outlined), selectedIcon: const Icon(Icons.restaurant), label: isOwner ? 'মিল' : 'মিল'),
@@ -267,6 +267,31 @@ class _HomeState extends State<HomePage> {
           },
         ),
         StreamBuilder<DatabaseEvent>(
+          stream: db.ref('messes/$mid/menu/${today()}').onValue,
+          builder: (c, s) {
+            final x = m(s.data?.snapshot.value);
+            final has = x.isNotEmpty;
+            if (!has && !Me.meal) return const SizedBox();
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Icon(Icons.restaurant_menu, size: 18),
+                    const SizedBox(width: 6),
+                    const Expanded(child: Text('আজকের মেনু', style: TextStyle(fontWeight: FontWeight.w600))),
+                    if (Me.meal) IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.edit, size: 18), onPressed: () => editMenu(c)),
+                  ]),
+                  if (!has) const Text('মেনু দেওয়া হয়নি — পেন্সিল চেপে দিন', style: TextStyle(fontSize: 12)),
+                  if (x['b'] != null) Text('সকাল: ${x['b']}'),
+                  if (x['l'] != null) Text('দুপুর: ${x['l']}'),
+                  if (x['d'] != null) Text('রাত: ${x['d']}'),
+                ]),
+              ),
+            );
+          },
+        ),
+        StreamBuilder<DatabaseEvent>(
           stream: db.ref('messes/$mid/locked/$ym').onValue,
           builder: (c, s) => s.data?.snapshot.value == true ? const Card(child: ListTile(leading: Icon(Icons.lock), title: Text('এ মাস ক্লোজ করা — এন্ট্রি বদলানো যাবে না'))) : const SizedBox(),
         ),
@@ -297,7 +322,26 @@ class _HomeState extends State<HomePage> {
             final b = k.bal(Me.uid);
             final mine = Me.role != 'owner' && k.act.contains(Me.uid);
             return Column(children: [
-              Row(children: [Stat('মোট মিল', bn(k.total), Icons.restaurant), Stat('মিল রেট', bn(k.rate.toStringAsFixed(2)), Icons.percent), Stat('মোট বাজার', taka(k.market), Icons.shopping_basket)]),
+              Row(children: [
+                Stat('মোট মিল', bn(k.total), Icons.restaurant),
+                if (k.fixedMode) ...[Stat('মোট মিল চার্জ', taka(k.totalCharge), Icons.payments), Stat('অতিরিক্ত/জন', taka(k.extraShare), Icons.soup_kitchen)]
+                else ...[Stat('মিল রেট', bn(k.rate.toStringAsFixed(2)), Icons.percent), Stat('মোট বাজার', taka(k.market), Icons.shopping_basket)],
+              ]),
+              if (mine) Container(
+                margin: const EdgeInsets.only(top: 6, bottom: 2),
+                padding: const EdgeInsets.fromLTRB(18, 14, 8, 14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: LinearGradient(colors: k.netDue(Me.uid) > 0.5 ? const [Color(0xFFC62828), Color(0xFFEF5350)] : const [Color(0xFF2E7D32), Color(0xFF66BB6A)]),
+                ),
+                child: Row(children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(k.netDue(Me.uid).abs() < 0.5 ? 'আপনার কোনো বাকি নেই' : k.netDue(Me.uid) > 0 ? 'এ মাসে আপনার দেওয়ার বাকি' : 'এ মাসে আপনি পাবেন', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text(taka(k.netDue(Me.uid).abs()), style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.bold)),
+                  ])),
+                  IconButton(tooltip: 'হোয়াটসঅ্যাপে শেয়ার', icon: const Icon(Icons.share, color: Colors.white), onPressed: () => openUrl('https://wa.me/?text=${Uri.encodeComponent(statementText(k, Me.uid))}')),
+                ]),
+              ),
               if (mine) Card(
                 color: b >= 0 ? Colors.green.withOpacity(.15) : Colors.red.withOpacity(.15),
                 child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -305,24 +349,106 @@ class _HomeState extends State<HomePage> {
                   const SizedBox(height: 6),
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('আমার মিল: ${bn(k.mc[Me.uid] ?? 0)}'), Text('মিল খরচ: ${taka(k.cost(Me.uid))}')]),
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('আমার জমা: ${taka((k.dep[Me.uid] ?? 0) + (k.prev[Me.uid] ?? 0))}'), Text('${b >= 0 ? 'পাওনা' : 'দেনা'}: ${taka(b.abs())}', style: TextStyle(fontWeight: FontWeight.bold, color: b >= 0 ? Colors.green.shade700 : Colors.red.shade700))]),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('আমার চাল: ${bn(k.riceCost(Me.uid).toStringAsFixed(2))} কেজি'), Text('${k.riceBal(Me.uid) >= 0 ? 'চাল বাকি' : 'চাল ঘাটতি'}: ${bn(k.riceBal(Me.uid).abs().toStringAsFixed(2))} কেজি')]),
                   const Divider(),
-                  Text('মাস শেষে মোট ${k.netDue(Me.uid) >= 0 ? 'দিতে হবে' : 'পাবেন'}: ${taka(k.netDue(Me.uid).abs())}  (বিল, জ্বালানি, ভাড়া সহ)', style: const TextStyle(fontSize: 12)),
+                  Text('মাস শেষে মোট ${k.netDue(Me.uid) >= 0 ? 'দিতে হবে' : 'পাবেন'}: ${taka(k.netDue(Me.uid).abs())}  (তহবিলের বাকি চাঁদা ও ভাড়া সহ)', style: const TextStyle(fontSize: 12)),
                 ])),
               ),
               if (Me.meal && k.pendingMarket > 0) Card(color: Colors.amber.shade100, child: ListTile(leading: const Icon(Icons.pending_actions, color: Colors.black87), title: Text('অনুমোদনের অপেক্ষায় বাজার: ${taka(k.pendingMarket)}', style: const TextStyle(color: Colors.black87)), subtitle: const Text('এন্ট্রি ট্যাবে গিয়ে অনুমোদন দিন', style: TextStyle(color: Colors.black54)))),
             ]);
           },
         ),
+        if (Me.mon) StreamBuilder<DatabaseEvent>(
+          stream: db.ref('messes/$mid/members').onValue,
+          builder: (c, s) {
+            if (!s.hasData || m(s.data!.snapshot.value).length > 1) return const SizedBox();
+            return Card(
+              color: cs.primaryContainer,
+              child: ListTile(
+                leading: const Icon(Icons.person_add),
+                title: const Text('সদস্য যোগ করুন'),
+                subtitle: const Text('নাম, মোবাইল ও পাসওয়ার্ড দিয়ে সদস্যদের যোগ করুন'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const MembersPage())),
+              ),
+            );
+          },
+        ),
+        if (Me.mon) ...[
+          const SizedBox(height: 14),
+          const Text('কাজ বেছে নিন', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          const MonitorHome(),
+        ],
         const SizedBox(height: 10),
         Card(
           child: Padding(padding: const EdgeInsets.all(8), child: Row(children: [
             action(Icons.shopping_cart, 'বাজারের তালিকা', () => Navigator.push(c, MaterialPageRoute(builder: (_) => const BazarListPage()))),
             action(Icons.picture_as_pdf, 'মাসের PDF', () async { try { await sharePdf(await Calc.load(ym)); } catch (e) { if (c.mounted) snack(c, 'PDF হয়নি, নেট দেখুন'); } }),
+            if (Me.role != 'owner') action(Icons.share, 'আমার হিসাব শেয়ার', () async {
+              try {
+                final k = await Calc.load(ym);
+                await openUrl('https://wa.me/?text=${Uri.encodeComponent(statementText(k, Me.uid))}');
+              } catch (e) { if (c.mounted) snack(c, 'হয়নি, নেট দেখুন'); }
+            }),
             action(Icons.send, 'যোগাযোগ', () => openUrl(telegram)),
           ])),
         ),
         Center(child: footer()),
       ]),
+    );
+  }
+}
+
+/// মনিটরের প্রথম পেজ: কোনো হিসাব/এন্ট্রি আপনা-আপনি আসে না, বাছলে তবেই খোলে
+class MonitorHome extends StatelessWidget {
+  const MonitorHome({super.key});
+  Widget tile(BuildContext c, IconData ic, String t, Color col, VoidCallback go) => InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: go,
+      child: Container(
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), color: col.withOpacity(.16)),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          CircleAvatar(radius: 26, backgroundColor: col, child: Icon(ic, color: Colors.white, size: 28)),
+          const SizedBox(height: 8),
+          Text(t, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        ]),
+      ));
+
+  void page(BuildContext c, String title, Widget body) =>
+      Navigator.push(c, MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: Text(title)), body: SafeArea(child: Column(children: [const OfflineBanner(), Expanded(child: body)])))));
+  void led(BuildContext c, String title, List<String> only) =>
+      Navigator.push(c, MaterialPageRoute(builder: (_) => Scaffold(body: SafeArea(child: Column(children: [const OfflineBanner(), Expanded(child: LedgerPage(only: only, title: title))])))));
+
+  @override
+  Widget build(BuildContext c) {
+    const st = SettingsPage();
+    final items = <List<Object>>[
+      [Icons.restaurant, 'মিল', const Color(0xFF00897B), () => page(c, 'মিল', const MealPage())],
+      [Icons.savings, 'টাকা জমা', const Color(0xFF43A047), () => led(c, 'টাকা জমা', ['deposit', 'rice'])],
+      [Icons.shopping_basket, 'বাজার', const Color(0xFFEF6C00), () => led(c, 'বাজার', ['market'])],
+      [Icons.soup_kitchen, 'মশলা ও অতিরিক্ত', const Color(0xFFD84315), () => led(c, 'মশলা ও অতিরিক্ত', ['extra', 'rice_extra', 'x_in', 'x_out'])],
+      [Icons.tune, 'মিল চার্জ নিয়ম', const Color(0xFF3949AB), () => st.mealRules(c)],
+      [Icons.receipt_long, 'বিল', const Color(0xFF3949AB), () => led(c, 'বিল', ['bill_in', 'bill'])],
+      [Icons.local_fire_department, 'জ্বালানি', const Color(0xFFE53935), () => led(c, 'জ্বালানি', ['fuel_in', 'fuel'])],
+      [Icons.construction, 'উন্নয়ন', const Color(0xFF6D4C41), () => led(c, 'উন্নয়ন', ['dev_in', 'dev'])],
+      [Icons.home, 'ভাড়া ও মালিক', const Color(0xFF8E24AA), () => led(c, 'ভাড়া ও মালিক', ['rent', 'advance', 'owner'])],
+      [Icons.bar_chart, 'রিপোর্ট', const Color(0xFF00ACC1), () => page(c, 'রিপোর্ট', const ReportPage())],
+      [Icons.group, 'সদস্য', const Color(0xFF1E88E5), () => Navigator.push(c, MaterialPageRoute(builder: (_) => const MembersPage()))],
+      [Icons.shopping_cart, 'বাজারের তালিকা', const Color(0xFFFB8C00), () => Navigator.push(c, MaterialPageRoute(builder: (_) => const BazarListPage()))],
+      [Icons.campaign, 'নোটিশ', const Color(0xFFFFB300), () => st.notice(c)],
+      [Icons.forum, 'অনুরোধ', const Color(0xFF00897B), () => Navigator.push(c, MaterialPageRoute(builder: (_) => const RequestsPage()))],
+      [Icons.lock_clock, 'মাস ক্লোজ', const Color(0xFF546E7A), () => st.closeMonth(c)],
+      [Icons.settings, 'সেটিংস', const Color(0xFF757575), () => page(c, 'সেটিংস', const SettingsPage())],
+    ];
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 3,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: .95,
+      children: [for (final i in items) tile(c, i[0] as IconData, i[1] as String, i[2] as Color, i[3] as VoidCallback)],
     );
   }
 }

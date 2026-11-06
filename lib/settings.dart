@@ -84,8 +84,9 @@ class SettingsPage extends StatelessWidget {
                             final k = await Calc.load(ym);
                             await db.ref('messes/${Me.mid}/summary/$ym').set({
                               'bal': {for (final u in k.act) u: double.parse(k.bal(u).toStringAsFixed(2))},
+                              'rbal': {for (final u in k.act) u: double.parse(k.riceBal(u).toStringAsFixed(3))},
                               'fund': {'bill': k.fundLeft('bill', k.bin.values.fold(0.0, (a, b) => a + b), k.bill), 'fuel': k.fundLeft('fuel', k.fin.values.fold(0.0, (a, b) => a + b), k.fuel), 'dev': k.fundLeft('dev', k.din.values.fold(0.0, (a, b) => a + b), k.dev)},
-                              'rate': double.parse(k.rate.toStringAsFixed(2)), 'meals': k.total,
+                              'rate': double.parse(k.rate.toStringAsFixed(2)), 'charge': double.parse(k.totalCharge.toStringAsFixed(0)), 'meals': k.total,
                             });
                             await db.ref('messes/${Me.mid}/locked/$ym').set(true);
                             await audit('মাস ক্লোজ: $ym');
@@ -100,20 +101,100 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  /// মিটিংয়ে ঠিক করা মিল চার্জ ও চালের নিয়ম
+  Future<void> mealRules(BuildContext c) async {
+    final cur = m((await db.ref('messes/${Me.mid}/cfg').get()).value);
+    final keys = ['pb', 'pl', 'pd', 'rb', 'rl', 'rd'];
+    const defs = {'rb': 100, 'rl': 250, 'rd': 150};
+    final ctl = {for (final k in keys) k: TextEditingController(text: cur[k] != null ? '${dn(cur[k]) == dn(cur[k]).roundToDouble() ? dn(cur[k]).toInt() : dn(cur[k])}' : (defs[k] != null ? '${defs[k]}' : ''))};
+    bool fixed = '${cur['mode']}' != 'rate';
+    if (!c.mounted) return;
+    await showDialog(
+      context: c,
+      builder: (_) => StatefulBuilder(
+        builder: (d, set) => AlertDialog(
+          title: const Text('মিল চার্জ ও চালের নিয়ম'),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            SegmentedButton<bool>(
+              showSelectedIcon: false,
+              segments: const [ButtonSegment(value: true, label: Text('ফিক্সড চার্জ')), ButtonSegment(value: false, label: Text('বাজার ÷ মিল'))],
+              selected: {fixed}, onSelectionChanged: (s) => set(() => fixed = s.first)),
+            const SizedBox(height: 6),
+            Text(fixed ? 'মিটিংয়ে ঠিক করা প্রতি মিলের চার্জ। মাস শেষে মশলা/অতিরিক্ত খরচ সবার মধ্যে সমান ভাগ হয়ে যোগ হবে।' : 'মাসের মোট আসল বাজার ÷ মোট মিল = মিল রেট।', style: const TextStyle(fontSize: 12)),
+            if (fixed) ...[
+              const Text('প্রতি মিলের চার্জ (টাকা)', style: TextStyle(fontWeight: FontWeight.w600)),
+              Row(children: [
+                for (final e in {'pb': 'সকাল', 'pl': 'দুপুর', 'pd': 'রাত'}.entries) Expanded(child: Padding(padding: const EdgeInsets.all(3), child: TextField(controller: ctl[e.key], keyboardType: TextInputType.number, decoration: InputDecoration(labelText: e.value)))),
+              ]),
+              const Text('অতিথির মিল দুপুরের চার্জে ধরা হয়।', style: TextStyle(fontSize: 11)),
+            ],
+            const SizedBox(height: 8),
+            const Text('প্রতি মিলে চাল (গ্রাম)', style: TextStyle(fontWeight: FontWeight.w600)),
+            Row(children: [
+              for (final e in {'rb': 'সকাল', 'rl': 'দুপুর', 'rd': 'রাত'}.entries) Expanded(child: Padding(padding: const EdgeInsets.all(3), child: TextField(controller: ctl[e.key], keyboardType: TextInputType.number, decoration: InputDecoration(labelText: e.value)))),
+            ]),
+          ])),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d), child: const Text('বাতিল')),
+            FilledButton(onPressed: () async {
+              await safe(d, () async {
+                await db.ref('messes/${Me.mid}/cfg').update({'mode': fixed ? 'fixed' : 'rate', for (final k in keys) k: double.tryParse(ctl[k]!.text.trim()) ?? 0});
+                await audit('মিল চার্জ/চালের নিয়ম বদলেছে');
+                if (d.mounted) Navigator.pop(d);
+              });
+            }, child: const Text('সেভ')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> funds(BuildContext c) async {
+    final cur = m((await db.ref('messes/${Me.mid}/cfg').get()).value);
+    final ctl = {for (final k in ['bill', 'fuel', 'dev']) k: TextEditingController(text: n(cur[k]) == 0 ? '' : '${n(cur[k])}')};
+    if (!c.mounted) return;
+    await showDialog(
+      context: c,
+      builder: (d) => AlertDialog(
+        title: const Text('তহবিলের মাসিক চাঁদা (জনপ্রতি)'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('সবাই এই টাকা দেবে, খরচ তহবিল থেকে হবে, বাকি টাকা পরের মাসে জমা থাকবে। না লিখলে বাকি হিসাব হবে না।', style: TextStyle(fontSize: 12)),
+          TextField(controller: ctl['bill'], keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'বিল (টাকা)')),
+          TextField(controller: ctl['fuel'], keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'জ্বালানি (টাকা)')),
+          TextField(controller: ctl['dev'], keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'উন্নয়ন (টাকা)')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('বাতিল')),
+          FilledButton(onPressed: () async {
+            await safe(d, () async {
+              await db.ref('messes/${Me.mid}/cfg').update({for (final e in ctl.entries) e.key: double.tryParse(e.value.text.trim()) ?? 0});
+              await audit('তহবিলের চাঁদা ঠিক করেছে');
+              if (d.mounted) Navigator.pop(d);
+            });
+          }, child: const Text('সেভ')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext c) => ListView(padding: const EdgeInsets.all(8), children: [
         ListTile(leading: const CircleAvatar(child: Icon(Icons.person)), title: Text('${Me.name} (${roles[Me.role]})'), subtitle: Text(auth.currentUser?.email?.split('@').first ?? '')),
         if (mon) ...[
           ListTile(leading: const Icon(Icons.group), title: const Text('সদস্য ও ম্যানেজার'), onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const MembersPage()))),
+          ListTile(leading: const Icon(Icons.tune), title: const Text('মিল চার্জ ও চালের নিয়ম'), onTap: () => mealRules(c)),
+          ListTile(leading: const Icon(Icons.savings), title: const Text('তহবিলের মাসিক চাঁদা (বিল/জ্বালানি/উন্নয়ন)'), onTap: () => funds(c)),
           ListTile(leading: const Icon(Icons.campaign), title: const Text('নোটিশ বোর্ড'), onTap: () => notice(c)),
           ListTile(leading: const Icon(Icons.lock_clock), title: const Text('মাস ক্লোজ ও ক্যারি ফরওয়ার্ড'), onTap: () => closeMonth(c)),
-          ListTile(leading: const Icon(Icons.history), title: const Text('অডিট লগ'), onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const AuditPage()))),
-          ListTile(leading: const Icon(Icons.backup), title: const Text('ব্যাকআপ কপি (JSON)'), onTap: () async {
-            final v = await db.ref('messes/${Me.mid}').get();
-            await Clipboard.setData(ClipboardData(text: jsonEncode(v.value)));
-            if (c.mounted) snack(c, 'ব্যাকআপ কপি হয়েছে, কোথাও পেস্ট করে সেভ করুন');
-          }),
-          ListTile(leading: const Icon(Icons.vpn_key), title: const Text('Mess ID'), subtitle: SelectableText(Me.mid)),
+          ExpansionTile(leading: const Icon(Icons.tune), title: const Text('আরও (কে কী করেছে, ব্যাকআপ)'), children: [
+            ListTile(leading: const Icon(Icons.history), title: const Text('কে কী করেছে (লগ)'), onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const AuditPage()))),
+            ListTile(leading: const Icon(Icons.backup), title: const Text('ব্যাকআপ কপি করুন'), onTap: () async {
+              final v = await db.ref('messes/${Me.mid}').get();
+              await Clipboard.setData(ClipboardData(text: jsonEncode(v.value)));
+              if (c.mounted) snack(c, 'ব্যাকআপ কপি হয়েছে, কোথাও পেস্ট করে সেভ করুন');
+            }),
+            ListTile(leading: const Icon(Icons.vpn_key), title: const Text('Mess ID'), subtitle: SelectableText(Me.mid)),
+          ]),
         ],
         const Divider(),
         ListTile(
@@ -125,6 +206,7 @@ class SettingsPage extends StatelessWidget {
               selected: {v}, onSelectionChanged: (s) => Prefs.setTheme(s.first))),
         ),
         ValueListenableBuilder<bool>(valueListenable: Prefs.bnDigits, builder: (_, v, __) => SwitchListTile(secondary: const Icon(Icons.pin), title: const Text('বাংলা সংখ্যা (১২৩)'), value: v, onChanged: Prefs.setBn)),
+        if (Me.role != 'owner') ListTile(leading: const Icon(Icons.forum), title: Text(Me.mon ? 'সদস্যদের অনুরোধ ও মতামত' : 'মনিটরকে অনুরোধ / মতামত'), onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const RequestsPage()))),
         ListTile(leading: const Icon(Icons.lock), title: const Text('পাসওয়ার্ড পরিবর্তন'), onTap: () => pass(c)),
         ListTile(leading: const Icon(Icons.send), title: const Text('যোগাযোগ / লাইসেন্স'), subtitle: const Text(telegramName), onTap: () => openUrl(telegram)),
         ListTile(leading: const Icon(Icons.logout), title: const Text('লগআউট'), onTap: auth.signOut),
@@ -319,4 +401,96 @@ class BazarListPage extends StatelessWidget {
       ),
     );
   }
+}
+
+/// অনুরোধ ও মতামত: সদস্য লেখে, মনিটর দেখে ও নিষ্পত্তি করে
+class RequestsPage extends StatelessWidget {
+  const RequestsPage({super.key});
+  @override
+  Widget build(BuildContext c) {
+    final ref = db.ref('messes/${Me.mid}/req');
+    return Scaffold(
+      appBar: AppBar(title: Text(Me.mon ? 'সদস্যদের অনুরোধ ও মতামত' : 'অনুরোধ / মতামত')),
+      floatingActionButton: Me.role == 'owner' ? null : FloatingActionButton.extended(
+        icon: const Icon(Icons.edit),
+        label: const Text('লিখুন'),
+        onPressed: () async {
+          final t = TextEditingController();
+          await showDialog(context: c, builder: (d) => AlertDialog(
+            title: const Text('মনিটরকে জানান'),
+            content: TextField(controller: t, maxLines: 4, autofocus: true, decoration: const InputDecoration(hintText: 'অনুরোধ, মতামত বা অভিযোগ')),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(d), child: const Text('বাতিল')),
+              FilledButton(onPressed: () async {
+                if (t.text.trim().isEmpty) return;
+                await safe(d, () => ref.push().set({'t': t.text.trim(), 'by': Me.name, 'byId': Me.uid, 'ts': ServerValue.timestamp, 'done': false}));
+                if (d.mounted) Navigator.pop(d);
+              }, child: const Text('পাঠান')),
+            ],
+          ));
+        },
+      ),
+      body: StreamBuilder<DatabaseEvent>(
+        stream: ref.orderByKey().limitToLast(60).onValue,
+        builder: (c, s) {
+          final l = m(s.data?.snapshot.value).entries.where((e) => Me.mon || m(e.value)['byId'] == Me.uid).toList()
+            ..sort((a, b) => '${b.key}'.compareTo('${a.key}'));
+          if (l.isEmpty) return const Empty(Icons.forum, 'কিছু নেই');
+          return ListView(padding: const EdgeInsets.only(bottom: 80), children: [
+            for (final e in l)
+              Card(
+                margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                child: ListTile(
+                  leading: Icon(m(e.value)['done'] == true ? Icons.check_circle : Icons.pending, color: m(e.value)['done'] == true ? Colors.green : Colors.orange),
+                  title: Text('${m(e.value)['t']}'),
+                  subtitle: Text('${m(e.value)['by']} • ${bn(DateTime.fromMillisecondsSinceEpoch(n(m(e.value)['ts'])).toString().substring(0, 16))}'),
+                  trailing: !Me.mon ? null : Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(icon: const Icon(Icons.done), onPressed: () => safe(c, () => ref.child('${e.key}/done').set(m(e.value)['done'] != true))),
+                    IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => safe(c, () => ref.child('${e.key}').remove())),
+                  ]),
+                ),
+              ),
+          ]);
+        },
+      ),
+    );
+  }
+}
+
+Future<void> editMenu(BuildContext c) async {
+  var dt = DateTime.now();
+  final b = TextEditingController(), l = TextEditingController(), d = TextEditingController();
+  Future<void> load() async {
+    final v = m((await db.ref('messes/${Me.mid}/menu/${ymd(dt)}').get()).value);
+    b.text = '${v['b'] ?? ''}'; l.text = '${v['l'] ?? ''}'; d.text = '${v['d'] ?? ''}';
+  }
+  await load();
+  if (!c.mounted) return;
+  await showDialog(
+    context: c,
+    builder: (_) => StatefulBuilder(
+      builder: (dc, set) => AlertDialog(
+        title: const Text('দিনের মেনু'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(contentPadding: EdgeInsets.zero, title: Text(bn(ymd(dt))), trailing: const Icon(Icons.calendar_month), onTap: () async {
+            final p = await showDatePicker(context: dc, initialDate: dt, firstDate: DateTime(2024), lastDate: DateTime(2100));
+            if (p != null) { dt = p; await load(); set(() {}); }
+          }),
+          TextField(controller: b, decoration: const InputDecoration(labelText: 'সকাল')),
+          TextField(controller: l, decoration: const InputDecoration(labelText: 'দুপুর')),
+          TextField(controller: d, decoration: const InputDecoration(labelText: 'রাত')),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dc), child: const Text('বাতিল')),
+          FilledButton(onPressed: () async {
+            await safe(dc, () async {
+              final v = {'b': b.text.trim(), 'l': l.text.trim(), 'd': d.text.trim()}..removeWhere((k, x) => x.isEmpty);
+              await db.ref('messes/${Me.mid}/menu/${ymd(dt)}').set(v.isEmpty ? null : v);
+              if (dc.mounted) Navigator.pop(dc);
+            });
+          }, child: const Text('সেভ')),
+        ],
+      ),
+    ),
+  );
 }

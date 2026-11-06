@@ -118,6 +118,27 @@ class _MealState extends State<MealPage> {
                   ])),
                 ),
                 if (edit)
+                  StreamBuilder<DatabaseEvent>(
+                    stream: db.ref('messes/$mid/cfg').onValue,
+                    builder: (c, s5) {
+                      final cf = m(s5.data?.snapshot.value);
+                      if ('${cf['mode']}' == 'rate') return const SizedBox();
+                      final pb = dn(cf['pb']), pl = dn(cf['pl']), pd = dn(cf['pd']);
+                      if (pb + pl + pd == 0) return const SizedBox();
+                      final rb = cf['rb'] == null ? 100.0 : dn(cf['rb']), rl = cf['rl'] == null ? 250.0 : dn(cf['rl']), rd = cf['rd'] == null ? 150.0 : dn(cf['rd']);
+                      final money = tb * pb + (tl + tg) * pl + td * pd;
+                      final kg = (tb * rb + (tl + tg) * rl + td * rd) / 1000;
+                      return Card(
+                        margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                        child: Padding(padding: const EdgeInsets.all(10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          const Text('আজকের বাজেট', style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text('দুপুর ${bn(tl + tg)}×${f0(pl)} + রাত ${bn(td)}×${f0(pd)}${pb > 0 ? ' + সকাল ${bn(tb)}×${f0(pb)}' : ''} = ${taka(money)}'),
+                          Text('চাল লাগবে: ${bn(kg.toStringAsFixed(2))} কেজি  (মশলা/অতিরিক্ত আলাদা দিতে পারেন)', style: const TextStyle(fontSize: 12)),
+                        ])),
+                      );
+                    },
+                  ),
+                if (edit)
                   SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(children: [
                     ActionChip(avatar: const Icon(Icons.auto_fix_high, size: 18), label: const Text('ডিফল্ট বসান'), onPressed: () => applyDefaults(ms, off, ml)),
                     const SizedBox(width: 6),

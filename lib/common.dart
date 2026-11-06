@@ -20,14 +20,14 @@ class Me {
 /// ব্যবহারকারীর সেটিংস (ফোনেই থাকে, ফায়ারবেসে কিছু লাগে না)
 class Prefs {
   static final theme = ValueNotifier<ThemeMode>(ThemeMode.system);
-  static final bnDigits = ValueNotifier<bool>(false);
+  static final bnDigits = ValueNotifier<bool>(true);
   static SharedPreferences? _p;
   static Future<void> load() async {
     try {
       _p = await SharedPreferences.getInstance();
       final t = _p!.getString('theme') ?? 'system';
       theme.value = t == 'dark' ? ThemeMode.dark : t == 'light' ? ThemeMode.light : ThemeMode.system;
-      bnDigits.value = _p!.getBool('bn') ?? false;
+      bnDigits.value = _p!.getBool('bn') ?? true;
     } catch (_) {}
   }
   static Future<void> setTheme(ThemeMode t) async {
@@ -74,15 +74,17 @@ const types = {
   'deposit': 'টাকা জমা', 'rice': 'চাল জমা (কেজি)', 'market': 'বাজার খরচ',
   'bill_in': 'বিল জমা', 'bill': 'বিল খরচ', 'fuel_in': 'জ্বালানি জমা', 'fuel': 'জ্বালানি খরচ',
   'dev_in': 'উন্নয়ন জমা', 'dev': 'উন্নয়ন খরচ', 'rent': 'বাড়িভাড়া জমা', 'advance': 'অগ্রিম জমা', 'owner': 'মালিককে পরিশোধ',
+  'extra': 'মশলা/অতিরিক্ত খরচ (দৈনিক)', 'rice_extra': 'অতিরিক্ত চাল (কেজি)', 'x_in': 'অন্য আয় (অতিথি/অতিরিক্ত মিল)', 'x_out': 'খুচরা খরচ (ভিম, লবণ, ব্যাগ…)',
 };
 const typeIcons = {
   'deposit': Icons.savings, 'rice': Icons.rice_bowl, 'market': Icons.shopping_basket, 'bill_in': Icons.receipt, 'bill': Icons.receipt_long,
   'fuel_in': Icons.local_fire_department, 'fuel': Icons.local_fire_department, 'dev_in': Icons.construction, 'dev': Icons.construction,
   'rent': Icons.home, 'advance': Icons.account_balance_wallet, 'owner': Icons.outbox,
+  'extra': Icons.soup_kitchen, 'rice_extra': Icons.grain, 'x_in': Icons.add_card, 'x_out': Icons.local_grocery_store,
 };
 const canEnter = {
-  'monitor': ['deposit', 'rice', 'market', 'bill_in', 'bill', 'fuel_in', 'fuel', 'dev_in', 'dev', 'rent', 'advance', 'owner'],
-  'meal': ['deposit', 'rice', 'market'], 'bazari': ['market'], 'bills': ['bill_in', 'bill'], 'fuel': ['fuel_in', 'fuel'], 'dev': ['dev_in', 'dev'],
+  'monitor': ['deposit', 'rice', 'market', 'extra', 'rice_extra', 'x_in', 'x_out', 'bill_in', 'bill', 'fuel_in', 'fuel', 'dev_in', 'dev', 'rent', 'advance', 'owner'],
+  'meal': ['deposit', 'rice', 'market', 'extra', 'rice_extra', 'x_in', 'x_out'], 'bazari': ['market'], 'bills': ['bill_in', 'bill'], 'fuel': ['fuel_in', 'fuel'], 'dev': ['dev_in', 'dev'],
   'boarder': <String>[], 'owner': <String>[],
 };
 const expenseTypes = ['market', 'bill', 'fuel', 'dev'];
