@@ -3,6 +3,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'common.dart';
 import 'config.dart';
+import 'heads.dart';
 
 /// এক মাসের সব হিসাব একসাথে (হোম, রিপোর্ট, মাস ক্লোজ — সবাই এটাই ব্যবহার করে)
 class Calc {
@@ -21,6 +22,7 @@ class Calc {
   Map<String, double> prevFund = {'bill': 0, 'fuel': 0, 'dev': 0};
   Map<String, double> fixed = {'bill': 0, 'fuel': 0, 'dev': 0}; // জনপ্রতি মাসিক চাঁদা (মনিটর ঠিক করে)
   List<Map> expenses = [];
+  List<HV> heads = []; // সব বিল/খাত (চলমান ও ক্লোজ)
   Calc(this.ym, this.members, this.act);
 
   double get rate => total > 0 ? market / total : 0;
@@ -46,7 +48,8 @@ class Calc {
   double rentDueOf(String u) => rentOf(u) - (rentPaid[u] ?? 0);
   String nm(String u) => '${m(members[u])['name'] ?? '-'}';
   /// মাস শেষে এই সদস্যের মোট দেনা (+) / পাওনা (-) — মিল, তহবিলের বাকি চাঁদা ও ভাড়া সহ
-  double netDue(String u) => -bal(u) + billDue(u) + fuelDue(u) + devDue(u) + rentDueOf(u);
+  double headDue(String u) => heads.fold(0.0, (a, v) => a + v.dueLeft(u));
+  double netDue(String u) => -bal(u) + headDue(u);
   double fundLeft(String k, double inn, double out) => (prevFund[k] ?? 0) + inn - out;
 
   static Future<Calc> load(String ym) async {
@@ -59,10 +62,12 @@ class Calc {
       db.ref('messes/$mid/entries/$ym').get(),
       db.ref('messes/$mid/summary/$pym').get(),
       db.ref('messes/$mid/cfg').get(),
+      db.ref('messes/$mid/heads').get(),
     ]);
     final ms = m(r[0].value);
     final act = [for (final e in ms.entries) if (m(e.value)['active'] != false && m(e.value)['role'] != 'owner') '${e.key}'];
     final c = Calc(ym, ms, act);
+    c.heads = [for (final e in m(r[5].value).entries) HV('${e.key}', m(e.value), ms)];
     final cfg = m(r[4].value);
     c.fixedMode = '${cfg['mode']}' != 'rate';
     for (final k in ['bill', 'fuel', 'dev']) { if (cfg[k] != null) c.fixed[k] = dn(cfg[k]); }
@@ -171,32 +176,43 @@ Map<String, Rpt> buildReports(Calc c) {
   ], ['নাম', 'ধার্য', 'জমা', 'বাকি', 'অগ্রিম'],
       [for (final u in act) [c.nm(u), s(c.rentOf(u)), s(c.rentPaid[u] ?? 0), s(c.rentDueOf(u)), s(c.adv[u] ?? 0)].map((x) => bn(x)).toList()], act);
 
-  final net = Rpt('সবার চূড়ান্ত হিসাব', ['ধনাত্মক = সদস্য দেবে, ঋণাত্মক = সদস্য পাবে', '(মিল + তহবিলের বাকি চাঁদা + ভাড়া মিলিয়ে)'],
-      ['নাম', 'মিল', 'বিল', 'জ্বালানি', 'উন্নয়ন', 'ভাড়া', 'মোট দিতে হবে'],
-      [for (final u in act) [c.nm(u), s(-c.bal(u)), s(c.billDue(u)), s(c.fuelDue(u)), s(c.devDue(u)), s(c.rentDueOf(u)), s(c.netDue(u))].map((x) => bn(x)).toList()], act);
+  bool hvis(HV v) {
+    switch (Me.role) {
+      case 'owner': return v.mode == 'rent';
+      case 'monitor': case 'boarder': return true;
+      default: return canHead(v.h);
+    }
+  }
+  final vh = c.heads.where(hvis).toList();
+  final shown = vh.where((v) => !v.closed || v.part.any((u) => v.dueLeft(u) > 0.5)).toList();
+  final headsR = Rpt('বিল ও খাতের হিসাব', [
+    if (vh.isEmpty) 'কোনো বিল বা খাত তৈরি হয়নি',
+    for (final v in vh) '• ${v.name} (${v.closed ? 'ক্লোজ' : 'চলছে'}): ধার্য ${taka(v.dueTotal)} • জমা ${taka(v.paidTotal)} • বাকি ${taka(v.dueTotal - v.paidTotal)} • খরচ ${taka(v.spent)} • হাতে ${taka(v.left)}',
+    if (shown.isNotEmpty) '— কার কোন বিলে কত বাকি —',
+  ], shown.isEmpty ? <String>[] : ['নাম', for (final v in shown) v.name, 'মোট বাকি'],
+      shown.isEmpty ? <List<String>>[] : [for (final u in act) [c.nm(u), for (final v in shown) bn(s(v.dueLeft(u))), bn(s(shown.fold(0.0, (a, v) => a + v.dueLeft(u))))]], act);
+
+  final net = Rpt('চূড়ান্ত হিসাব (কে কত দেবে)', ['ধনাত্মক = সদস্য দেবে, ঋণাত্মক = সদস্য পাবে', '(মিলের পাওনা/দেনা + সব বিল ও খাতের বাকি মিলিয়ে)'],
+      ['নাম', 'মিল', 'বিল/খাত', 'মোট দিতে হবে'],
+      [for (final u in act) [c.nm(u), s(-c.bal(u)), s(c.headDue(u)), s(c.netDue(u))].map((x) => bn(x)).toList()], act);
 
   final all = Rpt('মেসের সার্বিক অবস্থা', [
     'সদস্য: ${bn(act.length)}', 'মোট মিল: ${bn(c.total)}', c.fixedMode ? 'মোট মিল চার্জ: ${taka(c.totalCharge)}' : 'মিল রেট: ${bn(c.rate.toStringAsFixed(2))}',
     'টাকা জমা (মিল): ${taka(c.dep.values.fold(0.0, (a, b) => a + b))}', 'বাজার খরচ: ${taka(c.market)}',
-    'বিল খরচ: ${taka(c.bill)}   জ্বালানি খরচ: ${taka(c.fuel)}   উন্নয়ন খরচ: ${taka(c.dev)}',
-    'জ্বালানি তহবিলে অবশিষ্ট: ${taka(c.fundLeft('fuel', c.fin.values.fold(0.0, (a, b) => a + b), c.fuel))}',
-    'ভাড়া ধার্য/জমা: ${taka(c.rentDue)} / ${taka(c.rentPaid.values.fold(0.0, (a, b) => a + b))}',
+    'চলমান বিল/খাত: ${bn(c.heads.where((v) => !v.closed).length)}টি • মোট বাকি: ${taka(c.heads.fold(0.0, (a, v) => a + v.part.fold(0.0, (x, u) => x + (v.dueLeft(u) > 0 ? v.dueLeft(u) : 0))))}',
   ], [], [], []);
   final full = {
     'all': all,
     'meal': meal,
     'rice': riceR,
+    'heads': headsR,
     'net': net,
-    'bill': fund('বিল তহবিল', 'bill', c.bin, c.bill),
-    'fuel': fund('জ্বালানি তহবিল', 'fuel', c.fin, c.fuel),
-    'dev': fund('উন্নয়ন তহবিল', 'dev', c.din, c.dev),
-    'rent': rent,
   };
   // যার যে কাজ, সে শুধু সেই রিপোর্ট দেখবে (বর্ডার শুধু নিজের সারি দেখে)
   const see = {
-    'monitor': ['all', 'meal', 'rice', 'net', 'bill', 'fuel', 'dev', 'rent'],
-    'meal': ['meal', 'rice'], 'bazari': ['meal'], 'bills': ['bill'], 'fuel': ['fuel'], 'dev': ['dev'],
-    'boarder': ['meal', 'rice', 'net', 'bill', 'fuel', 'dev'], 'owner': ['rent'],
+    'monitor': ['all', 'meal', 'rice', 'heads', 'net'],
+    'meal': ['meal', 'rice'], 'bazari': ['meal'], 'bills': ['heads'], 'fuel': ['heads'], 'dev': ['heads'],
+    'boarder': ['meal', 'rice', 'heads', 'net'], 'owner': ['heads'],
   };
   final ok = see[Me.role] ?? ['meal'];
   return {for (final k in ok) k: full[k]!};
@@ -212,7 +228,7 @@ String statementText(Calc c, String u) {
 চাল: ${bn(c.riceBal(u).toStringAsFixed(2))} কেজি ${c.riceBal(u) >= 0 ? 'বাকি' : 'ঘাটতি'}
 মিল খরচ: ${s(c.cost(u))}  | জমা: ${s(c.dep[u] ?? 0)}  | আগের: ${s(c.prev[u] ?? 0)}
 মিল ${b >= 0 ? 'পাওনা' : 'দেনা'}: ${s(b.abs())}
-বিল বাকি: ${s(c.billDue(u))}  | জ্বালানি বাকি: ${s(c.fuelDue(u))}  | উন্নয়ন বাকি: ${s(c.devDue(u))}  | ভাড়া বাকি: ${s(c.rentDueOf(u))}
+${[for (final v in c.heads) if (v.dueLeft(u) > 0.5) 'বাকি — ${v.name}: ৳${s(v.dueLeft(u))}'].join('\n')}
 ${nd >= 0 ? 'মোট দিতে হবে' : 'মোট পাবেন'}: ৳${s(nd.abs())}
 — $brand''';
 }
@@ -247,7 +263,7 @@ class ReportPage extends StatefulWidget {
   State<ReportPage> createState() => _ReportState();
 }
 
-const reportLabel = {'all': 'সার্বিক অবস্থা', 'meal': 'মিল হিসাব', 'rice': 'চালের হিসাব', 'net': 'চূড়ান্ত হিসাব (কে কত দেবে)', 'bill': 'বিল তহবিল', 'fuel': 'জ্বালানি তহবিল', 'dev': 'উন্নয়ন তহবিল', 'rent': 'ভাড়া / মালিক'};
+const reportLabel = {'all': 'সার্বিক অবস্থা', 'meal': 'মিল হিসাব', 'rice': 'চালের হিসাব', 'heads': 'বিল ও খাতের হিসাব', 'net': 'ফুল এন্ড ফাইনাল (কে কত দেবে)'};
 
 class _ReportState extends State<ReportPage> {
   DateTime mo = DateTime(DateTime.now().year, DateTime.now().month, 1);

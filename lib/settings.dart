@@ -183,9 +183,8 @@ class SettingsPage extends StatelessWidget {
         if (mon) ...[
           ListTile(leading: const Icon(Icons.group), title: const Text('সদস্য ও ম্যানেজার'), onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const MembersPage()))),
           ListTile(leading: const Icon(Icons.tune), title: const Text('মিল চার্জ ও চালের নিয়ম'), onTap: () => mealRules(c)),
-          ListTile(leading: const Icon(Icons.savings), title: const Text('তহবিলের মাসিক চাঁদা (বিল/জ্বালানি/উন্নয়ন)'), onTap: () => funds(c)),
           ListTile(leading: const Icon(Icons.campaign), title: const Text('নোটিশ বোর্ড'), onTap: () => notice(c)),
-          ListTile(leading: const Icon(Icons.lock_clock), title: const Text('মাস ক্লোজ ও ক্যারি ফরওয়ার্ড'), onTap: () => closeMonth(c)),
+          ListTile(leading: const Icon(Icons.lock_clock), title: const Text('মিল ক্লোজ ও জের টানা'), onTap: () => closeMonth(c)),
           ExpansionTile(leading: const Icon(Icons.tune), title: const Text('আরও (কে কী করেছে, ব্যাকআপ)'), children: [
             ListTile(leading: const Icon(Icons.history), title: const Text('কে কী করেছে (লগ)'), onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const AuditPage()))),
             ListTile(leading: const Icon(Icons.backup), title: const Text('ব্যাকআপ কপি করুন'), onTap: () async {

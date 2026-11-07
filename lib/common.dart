@@ -83,8 +83,8 @@ const typeIcons = {
   'extra': Icons.soup_kitchen, 'rice_extra': Icons.grain, 'x_in': Icons.add_card, 'x_out': Icons.local_grocery_store,
 };
 const canEnter = {
-  'monitor': ['deposit', 'rice', 'market', 'extra', 'rice_extra', 'x_in', 'x_out', 'bill_in', 'bill', 'fuel_in', 'fuel', 'dev_in', 'dev', 'rent', 'advance', 'owner'],
-  'meal': ['deposit', 'rice', 'market', 'extra', 'rice_extra', 'x_in', 'x_out'], 'bazari': ['market'], 'bills': ['bill_in', 'bill'], 'fuel': ['fuel_in', 'fuel'], 'dev': ['dev_in', 'dev'],
+  'monitor': ['deposit', 'rice', 'market', 'extra', 'rice_extra', 'x_in', 'x_out', 'advance', 'owner'],
+  'meal': ['deposit', 'rice', 'market', 'extra', 'rice_extra', 'x_in', 'x_out'], 'bazari': ['market'], 'bills': <String>[], 'fuel': <String>[], 'dev': <String>[],
   'boarder': <String>[], 'owner': <String>[],
 };
 const expenseTypes = ['market', 'bill', 'fuel', 'dev'];

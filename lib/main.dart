@@ -7,6 +7,8 @@ import 'common.dart';
 import 'config.dart';
 import 'firebase_options.dart';
 import 'meal.dart';
+import 'bills.dart';
+import 'heads.dart';
 import 'ledger.dart';
 import 'report.dart';
 import 'settings.dart';
@@ -192,18 +194,23 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext c) {
     Me.uid = widget.uid; Me.mid = widget.mid; Me.role = '${widget.p['role']}'; Me.name = '${widget.p['name']}'; Me.lic = widget.l;
-    final isOwner = Me.role == 'owner';
-    final pages = <Widget>[const HomePage(), const MealPage(), const LedgerPage(), const ReportPage(), const SettingsPage()];
-    const titles = ['মেস হিসাব', 'মিল', 'এন্ট্রি / হিসাব', 'রিপোর্ট', 'সেটিংস'];
+    // বর্ডার ও বাড়িওয়ালা এন্ট্রি ট্যাব দেখবে না
+    final showEntry = Me.role != 'boarder' && Me.role != 'owner';
+    final billRole = Me.role == 'bills' || Me.role == 'fuel' || Me.role == 'dev';
+    final items = <List<Object>>[
+      [const HomePage(), 'মেস হিসাব', Icons.home_outlined, Icons.home, 'হোম'],
+      [const MealPage(), 'মিল', Icons.restaurant_outlined, Icons.restaurant, 'মিল'],
+      if (showEntry && billRole) [const HeadsPage(), 'বিল ও খাত', Icons.receipt_long_outlined, Icons.receipt_long, 'বিল'],
+      if (showEntry && !billRole) [const LedgerPage(), 'এন্ট্রি / হিসাব', Icons.receipt_long_outlined, Icons.receipt_long, 'এন্ট্রি'],
+      [const ReportPage(), 'রিপোর্ট', Icons.bar_chart_outlined, Icons.bar_chart, 'রিপোর্ট'],
+      [const SettingsPage(), 'সেটিংস', Icons.settings_outlined, Icons.settings, 'সেটিংস'],
+    ];
+    if (i >= items.length) i = 0;
     return Scaffold(
-      appBar: AppBar(title: Text(titles[i]), toolbarHeight: 48),
-      body: SafeArea(child: Column(children: [const OfflineBanner(), Expanded(child: AnimatedSwitcher(duration: const Duration(milliseconds: 250), child: KeyedSubtree(key: ValueKey(i), child: pages[i])))])),
+      appBar: AppBar(title: Text(items[i][1] as String), toolbarHeight: 48),
+      body: SafeArea(child: Column(children: [const OfflineBanner(), Expanded(child: items[i][0] as Widget)])),
       bottomNavigationBar: NavigationBar(selectedIndex: i, onDestinationSelected: (v) => setState(() => i = v), destinations: [
-        const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'হোম'),
-        NavigationDestination(icon: const Icon(Icons.restaurant_outlined), selectedIcon: const Icon(Icons.restaurant), label: isOwner ? 'মিল' : 'মিল'),
-        const NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'এন্ট্রি'),
-        const NavigationDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: 'রিপোর্ট'),
-        const NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'সেটিংস'),
+        for (final x in items) NavigationDestination(icon: Icon(x[2] as IconData), selectedIcon: Icon(x[3] as IconData), label: x[4] as String),
       ]),
     );
   }
@@ -354,6 +361,20 @@ class _HomeState extends State<HomePage> {
                   Text('মাস শেষে মোট ${k.netDue(Me.uid) >= 0 ? 'দিতে হবে' : 'পাবেন'}: ${taka(k.netDue(Me.uid).abs())}  (তহবিলের বাকি চাঁদা ও ভাড়া সহ)', style: const TextStyle(fontSize: 12)),
                 ])),
               ),
+              if (Me.mon && k.heads.any((v) => !v.closed)) Card(
+                child: Padding(padding: const EdgeInsets.fromLTRB(14, 10, 14, 6), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('চলমান বিল ও খাত', style: TextStyle(fontWeight: FontWeight.w600)),
+                  for (final v in k.heads.where((v) => !v.closed))
+                    ListTile(
+                      dense: true, contentPadding: EdgeInsets.zero,
+                      leading: Icon(headIcon(v.name, v.mode)),
+                      title: Text(v.name),
+                      subtitle: Text('${bn(v.part.where((u) => v.dueOf(u) > 0 && v.dueLeft(u) <= 0.5).length)}/${bn(v.part.length)} জন দিয়েছে'),
+                      trailing: Text('বাকি ${taka((v.dueTotal - v.paidTotal) > 0 ? v.dueTotal - v.paidTotal : 0)}', style: TextStyle(color: Colors.red.shade400, fontWeight: FontWeight.bold)),
+                      onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => HeadDetail(v.id))),
+                    ),
+                ])),
+              ),
               if (Me.meal && k.pendingMarket > 0) Card(color: Colors.amber.shade100, child: ListTile(leading: const Icon(Icons.pending_actions, color: Colors.black87), title: Text('অনুমোদনের অপেক্ষায় বাজার: ${taka(k.pendingMarket)}', style: const TextStyle(color: Colors.black87)), subtitle: const Text('এন্ট্রি ট্যাবে গিয়ে অনুমোদন দিন', style: TextStyle(color: Colors.black54)))),
             ]);
           },
@@ -428,16 +449,14 @@ class MonitorHome extends StatelessWidget {
       [Icons.shopping_basket, 'বাজার', const Color(0xFFEF6C00), () => led(c, 'বাজার', ['market'])],
       [Icons.soup_kitchen, 'মশলা ও অতিরিক্ত', const Color(0xFFD84315), () => led(c, 'মশলা ও অতিরিক্ত', ['extra', 'rice_extra', 'x_in', 'x_out'])],
       [Icons.tune, 'মিল চার্জ নিয়ম', const Color(0xFF3949AB), () => st.mealRules(c)],
-      [Icons.receipt_long, 'বিল', const Color(0xFF3949AB), () => led(c, 'বিল', ['bill_in', 'bill'])],
-      [Icons.local_fire_department, 'জ্বালানি', const Color(0xFFE53935), () => led(c, 'জ্বালানি', ['fuel_in', 'fuel'])],
-      [Icons.construction, 'উন্নয়ন', const Color(0xFF6D4C41), () => led(c, 'উন্নয়ন', ['dev_in', 'dev'])],
-      [Icons.home, 'ভাড়া ও মালিক', const Color(0xFF8E24AA), () => led(c, 'ভাড়া ও মালিক', ['rent', 'advance', 'owner'])],
+      [Icons.receipt_long, 'বিল ও খাত', const Color(0xFF3949AB), () => Navigator.push(c, MaterialPageRoute(builder: (_) => const HeadsPage(title: 'বিল ও খাত')))],
+      [Icons.outbox, 'মালিককে পরিশোধ', const Color(0xFF8E24AA), () => led(c, 'মালিককে পরিশোধ ও অগ্রিম', ['owner', 'advance'])],
       [Icons.bar_chart, 'রিপোর্ট', const Color(0xFF00ACC1), () => page(c, 'রিপোর্ট', const ReportPage())],
       [Icons.group, 'সদস্য', const Color(0xFF1E88E5), () => Navigator.push(c, MaterialPageRoute(builder: (_) => const MembersPage()))],
       [Icons.shopping_cart, 'বাজারের তালিকা', const Color(0xFFFB8C00), () => Navigator.push(c, MaterialPageRoute(builder: (_) => const BazarListPage()))],
       [Icons.campaign, 'নোটিশ', const Color(0xFFFFB300), () => st.notice(c)],
       [Icons.forum, 'অনুরোধ', const Color(0xFF00897B), () => Navigator.push(c, MaterialPageRoute(builder: (_) => const RequestsPage()))],
-      [Icons.lock_clock, 'মাস ক্লোজ', const Color(0xFF546E7A), () => st.closeMonth(c)],
+      [Icons.lock_clock, 'মিল ক্লোজ', const Color(0xFF546E7A), () => st.closeMonth(c)],
       [Icons.settings, 'সেটিংস', const Color(0xFF757575), () => page(c, 'সেটিংস', const SettingsPage())],
     ];
     return GridView.count(

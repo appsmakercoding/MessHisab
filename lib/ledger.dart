@@ -20,14 +20,11 @@ class _LedgerState extends State<LedgerPage> {
   List<String> get seeTypes {
     if (widget.only != null) return widget.only!;
     switch (Me.role) {
-      case 'monitor': return types.keys.toList();
+      case 'monitor': return ['deposit', 'rice', 'market', 'extra', 'rice_extra', 'x_in', 'x_out', 'advance', 'owner'];
       case 'meal': return ['deposit', 'rice', 'market', 'extra', 'rice_extra', 'x_in', 'x_out'];
       case 'bazari': return ['market'];
-      case 'bills': return ['bill_in', 'bill'];
-      case 'fuel': return ['fuel_in', 'fuel'];
-      case 'dev': return ['dev_in', 'dev'];
-      case 'owner': return ['rent', 'advance', 'owner'];
-      default: return types.keys.toList(); // বর্ডার: শুধু নিজের এন্ট্রি (নিচে ফিল্টার)
+      case 'owner': return ['advance', 'owner'];
+      default: return ['deposit', 'rice', 'market', 'extra', 'rice_extra', 'x_in', 'x_out', 'advance', 'owner']; // বর্ডার: শুধু নিজের এন্ট্রি (নিচে ফিল্টার)
     }
   }
   String get ym => ymOf(mo);
