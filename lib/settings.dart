@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'common.dart';
 import 'config.dart';
+import 'help.dart';
 import 'report.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -207,6 +208,8 @@ class SettingsPage extends StatelessWidget {
         ValueListenableBuilder<bool>(valueListenable: Prefs.bnDigits, builder: (_, v, __) => SwitchListTile(secondary: const Icon(Icons.pin), title: const Text('বাংলা সংখ্যা (১২৩)'), value: v, onChanged: Prefs.setBn)),
         if (Me.role != 'owner') ListTile(leading: const Icon(Icons.forum), title: Text(Me.mon ? 'সদস্যদের অনুরোধ ও মতামত' : 'মনিটরকে অনুরোধ / মতামত'), onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const RequestsPage()))),
         ListTile(leading: const Icon(Icons.lock), title: const Text('পাসওয়ার্ড পরিবর্তন'), onTap: () => pass(c)),
+        ListTile(leading: const Icon(Icons.menu_book), title: const Text('ব্যবহার গাইড'), onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const HelpPage()))),
+        ListTile(leading: const Icon(Icons.privacy_tip), title: const Text('গোপনীয়তা ও শর্ত'), onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const PrivacyPage()))),
         ListTile(leading: const Icon(Icons.send), title: const Text('যোগাযোগ / লাইসেন্স'), subtitle: const Text(telegramName), onTap: () => openUrl(telegram)),
         ListTile(leading: const Icon(Icons.logout), title: const Text('লগআউট'), onTap: auth.signOut),
         Center(child: footer()),

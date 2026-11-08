@@ -9,12 +9,18 @@ import 'firebase_options.dart';
 import 'meal.dart';
 import 'bills.dart';
 import 'heads.dart';
+import 'help.dart';
 import 'ledger.dart';
 import 'report.dart';
 import 'settings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  ErrorWidget.builder = (d) => Container(
+        padding: const EdgeInsets.all(8),
+        color: const Color(0xFFFFEBEE),
+        child: Text('ত্রুটি: ${d.exceptionAsString()}', style: const TextStyle(color: Colors.red, fontSize: 11)),
+      );
   await Firebase.initializeApp(options: firebaseOptions);
   try { db.setPersistenceEnabled(true); db.setPersistenceCacheSizeBytes(10 * 1024 * 1024); } catch (_) {}
   await Prefs.load();
@@ -104,6 +110,7 @@ class _LoginState extends State<LoginPage> {
                   const SizedBox(height: 16),
                   SizedBox(width: double.infinity, height: 48, child: FilledButton(onPressed: busy ? null : go, child: busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(reg ? 'মনিটর হিসেবে রেজিস্টার' : 'লগইন'))),
                   TextButton(onPressed: () => setState(() => reg = !reg), child: Text(reg ? 'অ্যাকাউন্ট আছে? লগইন' : 'নতুন মেস? রেজিস্টার করুন')),
+                  if (!reg) TextButton(onPressed: () => forgotDialog(context), child: const Text('পাসওয়ার্ড ভুলে গেছেন?')),
                   if (!reg) const Text('সদস্য হলে মনিটরের দেওয়া মোবাইল ও পাসওয়ার্ড দিয়ে লগইন করুন', style: TextStyle(fontSize: 11), textAlign: TextAlign.center),
                   footer(),
                 ]),
@@ -244,7 +251,7 @@ class _HomeState extends State<HomePage> {
     final greet = hr < 5 ? 'শুভ রাত্রি' : hr < 12 ? 'শুভ সকাল' : hr < 17 ? 'শুভ দুপুর' : hr < 20 ? 'শুভ সন্ধ্যা' : 'শুভ রাত্রি';
     return RefreshIndicator(
       onRefresh: () async { setState(() => f = Calc.load(ym)); await f; },
-      child: ListView(padding: const EdgeInsets.all(14), children: [
+      child: ListView(cacheExtent: 6000, padding: const EdgeInsets.all(14), children: [
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: const LinearGradient(colors: [Color(0xFF00695C), Color(0xFF26A69A)])),
